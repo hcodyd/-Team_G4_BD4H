@@ -1,0 +1,7 @@
+###### Requirements without Version Specifiers ######
+torch
+pandas
+numpy
+torch-geometric
+
+###### Requirements with Version Specifiers ######
