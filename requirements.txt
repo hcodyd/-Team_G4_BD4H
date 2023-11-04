@@ -1,7 +1,3 @@
-###### Requirements without Version Specifiers ######
-torch
-pandas
-numpy
-torch-geometric
-
-###### Requirements with Version Specifiers ######
+version https://git-lfs.github.com/spec/v1
+oid sha256:acc956e32605835b392acc849f2244e77cfee927df7ff499192f1059fa4d80b4
+size 148
