@@ -15,7 +15,6 @@ class Encoder_VGAE(nn.Module):
         self.conv_bait_gene = SAGEConv(in_channels, 2 * out_channels, )
         self.conv_gene_phenotype = SAGEConv(in_channels, 2 * out_channels, )
         self.conv_drug_phenotype = SAGEConv(in_channels, 2 * out_channels)
-
         self.bn = nn.BatchNorm1d(5 * 2 * out_channels)
         # variational encoder
         self.conv_mu = SAGEConv(5 * 2 * out_channels, out_channels, )
@@ -42,10 +41,8 @@ class Encoder_VGAE(nn.Module):
         x_gene_drug = F.dropout(F.relu(self.conv_gene_drug(x, edge_index_gene_drug)), p=0.5, training=self.training, )
         x_gene_gene = F.dropout(F.relu(self.conv_gene_gene(x, edge_index_gene_gene)), p=0.5, training=self.training)
         x_bait_gene = F.dropout(F.relu(self.conv_bait_gene(x, edge_index_bait_gene)), p=0.1, training=self.training)
-        x_gene_phenotype = F.dropout(F.relu(self.conv_gene_phenotype(x, edge_index_gene_phenotype)),
-                                     training=self.training)
-        x_drug_phenotype = F.dropout(F.relu(self.conv_drug_phenotype(x, edge_index_drug_phenotype)),
-                                     training=self.training)
+        x_gene_phenotype = F.dropout(F.relu(self.conv_gene_phenotype(x, edge_index_gene_phenotype)),training=self.training)
+        x_drug_phenotype = F.dropout(F.relu(self.conv_drug_phenotype(x, edge_index_drug_phenotype)),training=self.training)
 
         x = self.bn(torch.cat([x_gene_drug, x_gene_gene, x_bait_gene, x_gene_phenotype, x_drug_phenotype], dim=1))
 
@@ -76,8 +73,7 @@ class BPRLoss(nn.Module):
 
         # negative sample proportional to the high values
         negative_sampler = WeightedRandomSampler(negative_output - min(negative_output),
-                                                 num_samples=self.num_neg_samples * len(positive_output),
-                                                 replacement=True)
+                                                 num_samples=self.num_neg_samples * len(positive_output), replacement=True)
         negative_sample_output = negative_output[
             torch.tensor(list(BatchSampler(negative_sampler, batch_size=len(positive_output), drop_last=True)),
                          dtype=torch.long).t()]

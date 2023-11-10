@@ -24,7 +24,6 @@ from torch_geometric.utils import train_test_split_edges
 from torch_geometric.utils import add_remaining_self_loops, add_self_loops
 from torch_geometric.utils import to_undirected
 from torch_geometric.nn import GCNConv, SAGEConv,GAE, VGAE
-
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.naive_bayes import GaussianNB
@@ -36,30 +35,37 @@ from sklearn import metrics
 from sklearn.metrics import roc_auc_score, roc_curve, average_precision_score
 
 
-def baseline(X_train, y_train, y_test, X_test, le, types, top_items_idx, topk, trials_drug, indices_train):
+dec = 4
 
-    clf = LogisticRegression().fit(X_train, y_train)
-    print("Logit AUROC", roc_auc_score(y_test, clf.predict_proba(X_test)[:, 1]))
-    print("Logit AUPRC", average_precision_score(y_test, clf.predict_proba(X_test)[:, 1]))
+def baseline(X_train, y_train, y_test, X_test, clf, _X_test):
 
-    clf = GradientBoostingClassifier().fit(X_train, y_train)
-    print("XGBoost AUROC", roc_auc_score(y_test, clf.predict_proba(X_test)[:, 1]))
-    print("XGBoost AUPRC", average_precision_score(y_test, clf.predict_proba(X_test)[:, 1]))
+    classlist = [LogisticRegression(), GradientBoostingClassifier(), RandomForestClassifier(), make_pipeline(StandardScaler(), SVC(gamma='auto', probability=True))]
 
-    clf = RandomForestClassifier().fit(X_train, y_train)
-    print("rf AUROC", roc_auc_score(y_test, clf.predict_proba(X_test)[:, 1]))
-    print("rf AUPRC", average_precision_score(y_test, clf.predict_proba(X_test)[:, 1]))
+    claslabel = ["Logit", "Gradient Boosting", "Random Forest", "SVM"]
 
-    clf = make_pipeline(StandardScaler(), SVC(gamma='auto', probability=True)).fit(X_train, y_train)
-    print("svm AUROC", roc_auc_score(y_test, clf.predict_proba(X_test)[:, 1]))
-    print("svm AUPRC", average_precision_score(y_test, clf.predict_proba(X_test)[:, 1]))
+    file = open(r"Classifer.txt", "w")
 
-    topk_drugs = pd.DataFrame([(rank, drug.split('_')[1]) for rank, drug in enumerate(
-        le.inverse_transform((types == 'drug').nonzero()[0][top_items_idx])[:topk + 1])], columns=['rank', 'drug'])
-    topk_drugs['under_trials'] = topk_drugs['drug'].isin(trials_drug).astype(int)
-    topk_drugs['is_used_in_training'] = topk_drugs['drug'].isin(
-        np.array([drug.split('_')[1] for drug in le.classes_[types == 'drug']])[indices_train]).astype(int)
-    topk_drugs.to_csv('top300_drugs.csv')
+
+    prob = torch.sigmoid(clf(_X_test)).cpu().detach().numpy().squeeze()
+    str1 = "GNN AUROC {}\n".format(round(metrics.roc_auc_score(y_test, prob),dec))
+    str2 = "GNN AUPRC {}\n".format(round(metrics.average_precision_score(y_test, prob),dec))
+    print(str1)
+    print(str2)
+    file.write(str1)
+    file.write(str2)
+
+    for k,v in zip(classlist, claslabel):
+        clf = k.fit(X_train, y_train)
+        str1 = "{} AUROC {}\n".format(v,round(roc_auc_score(y_test, clf.predict_proba(X_test)[:, 1]),dec))
+        str2 = "{} AUPRC {}\n".format(v,round(average_precision_score(y_test, clf.predict_proba(X_test)[:, 1]),dec))
+        print(str1)
+        print(str2)
+        file.write(str1)
+        file.write(str2)
+
+    file.close()
+
+
 
 def train_test_split_edges(data, val_ratio=0.05, test_ratio=0.1):
     r"""Splits the edges of a :obj:`torch_geometric.data.Data` object
@@ -139,6 +145,7 @@ def main():
     NUM_EPOCHS = 10
     NUM_WORKERS = os.cpu_count()
     embedding_size = 128
+    seed = 70
 
     device = torch.device("cuda" if USE_CUDA and torch.cuda.is_available() else "cpu")
     torch.manual_seed(1)
@@ -158,7 +165,7 @@ def main():
     # print(edge_index['type'].value_counts())
     edge_attr = torch.tensor(edge_index['type'].values, dtype=torch.long)
     data = Data(x=node_feature,edge_index=edge.t().contiguous(),edge_attr=edge_attr)
-    print(data.num_features, data.num_nodes, data.num_edges)
+    # print(data.num_features, data.num_nodes, data.num_edges)
     # print(edge_attr.size())
     # print(data.contains_isolated_nodes(), data.is_directed())
 
@@ -168,7 +175,7 @@ def main():
 
     train_pos_edge_index, train_pos_edge_attr = add_remaining_self_loops(train_pos_edge_index, train_pos_edge_attr)
 
-    print(pd.Series(train_pos_edge_attr.cpu().numpy()).value_counts())
+    # print(pd.Series(train_pos_edge_attr.cpu().numpy()).value_counts())
 
     x, train_pos_edge_index, train_pos_edge_attr = Variable(x), Variable(train_pos_edge_index), Variable(train_pos_edge_attr)
 
@@ -183,7 +190,7 @@ def main():
         loss = loss + (1 / data.num_nodes) * model.kl_loss()
         loss.backward()
         optimizer.step()
-        print(loss.item())
+        print(round(loss.item(),dec))
 
     def test(pos_edge_index, neg_edge_index):
         model.eval()
@@ -219,11 +226,9 @@ def main():
                                     ' and ', '/').replace(' - ', '/').replace(' (', '/').replace(') ','/'))).values for drug in lst])
     drug_labels = [1 if drug.split('_')[1] in trials_drug else 0 for drug in le.classes_[types == 'drug']]
 
-    seed = 70
+
     indices = np.arange(len(drug_labels))
-    X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(z_np[types == 'drug'], drug_labels,
-                                                                                     indices, test_size=0.5,
-                                                                                     random_state=seed, )
+    X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(z_np[types == 'drug'], drug_labels,indices, test_size=0.5,random_state=seed)
     _X_train, _y_train = Variable(torch.tensor(X_train, dtype=torch.float).to(device)), Variable(
         torch.tensor(y_train, dtype=torch.float).to(device))
     _X_test, _y_test = Variable(torch.tensor(X_test, dtype=torch.float).to(device)), Variable(
@@ -241,10 +246,10 @@ def main():
         loss = criterion(out.squeeze(), _y_train)
         loss.backward()
         optimizer.step()
-        print('training loss', loss.item())
+        print('training loss', round(loss.item(),dec))
 
         clf.eval()
-        print('test loss', criterion(clf(_X_test).squeeze(), _y_test).item())
+        print('test loss', round(criterion(clf(_X_test).squeeze(), _y_test).item(),dec))
         prob = torch.sigmoid(clf(_X_test)).cpu().detach().numpy().squeeze()
         auprc = metrics.average_precision_score(y_test, prob)
         if auprc > best_auprc:
@@ -255,13 +260,21 @@ def main():
 
     clf.eval()
 
-    prob = torch.sigmoid(clf(_X_test)).cpu().detach().numpy().squeeze()
-    print("AUROC", metrics.roc_auc_score(y_test, prob))
-    print("AUPRC", metrics.average_precision_score(y_test, prob))
+    baseline(X_train, y_train, y_test, X_test, clf, _X_test)
 
     top_items_idx = np.argsort(-clf(torch.tensor(z_np[types == 'drug'], dtype=torch.float).to(device)).squeeze().detach().cpu().numpy())
 
-    baseline(X_train, y_train, y_test, X_test, le, types, top_items_idx, topk, trials_drug, indices_train)
+
+
+
+    topk_drugs = pd.DataFrame([(rank, drug.split('_')[1]) for rank, drug in enumerate(
+        le.inverse_transform((types == 'drug').nonzero()[0][top_items_idx])[:topk + 1])], columns=['rank', 'drug'])
+    topk_drugs['under_trials'] = topk_drugs['drug'].isin(trials_drug).astype(int)
+    topk_drugs['is_used_in_training'] = topk_drugs['drug'].isin(
+        np.array([drug.split('_')[1] for drug in le.classes_[types == 'drug']])[indices_train]).astype(int)
+    topk_drugs = topk_drugs.set_index("rank")
+    print(topk_drugs)
+    topk_drugs.to_csv('top300_drugs.csv')
 
 if __name__ == "__main__":
     main()
