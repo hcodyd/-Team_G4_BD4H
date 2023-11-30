@@ -37,33 +37,30 @@ from sklearn.metrics import roc_auc_score, roc_curve, average_precision_score
 
 dec = 4
 
-def baseline(X_train, y_train, y_test, X_test, clf, _X_test):
+def baseline(X_train, y_train, y_test, X_test, clf, _X_test, Version):
 
-    classlist = [LogisticRegression(), GradientBoostingClassifier(), RandomForestClassifier(), make_pipeline(StandardScaler(), SVC(gamma='auto', probability=True))]
+    classlist = [LogisticRegression(max_iter=5000), GradientBoostingClassifier(), RandomForestClassifier(), make_pipeline(StandardScaler(), SVC(gamma='auto', probability=True))]
 
     claslabel = ["Logit", "Gradient Boosting", "Random Forest", "SVM"]
 
-    file = open(r"Classifer.txt", "w")
-
-
     prob = torch.sigmoid(clf(_X_test)).cpu().detach().numpy().squeeze()
-    str1 = "GNN AUROC {}\n".format(round(metrics.roc_auc_score(y_test, prob),dec))
-    str2 = "GNN AUPRC {}\n".format(round(metrics.average_precision_score(y_test, prob),dec))
-    print(str1)
-    print(str2)
-    file.write(str1)
-    file.write(str2)
+    roc = [roc_auc_score(y_test, prob)]
+    prc = [average_precision_score(y_test, prob)]
 
-    for k,v in zip(classlist, claslabel):
+    for k, v in zip(classlist, claslabel):
         clf = k.fit(X_train, y_train)
-        str1 = "{} AUROC {}\n".format(v,round(roc_auc_score(y_test, clf.predict_proba(X_test)[:, 1]),dec))
-        str2 = "{} AUPRC {}\n".format(v,round(average_precision_score(y_test, clf.predict_proba(X_test)[:, 1]),dec))
-        print(str1)
-        print(str2)
-        file.write(str1)
-        file.write(str2)
+        roc.append(roc_auc_score(y_test, clf.predict_proba(X_test)[:, 1]))
+        prc.append(average_precision_score(y_test, clf.predict_proba(X_test)[:, 1]))
 
-    file.close()
+    cols = ["AUROC", "AUPRC"]
+    rows = ["GNN", "Logit", "Gradient Boosting", "Random Forest", "SVM"]
+
+    vals = list(zip(roc, prc))
+    df = pd.DataFrame(vals, columns=cols, index=rows)
+    df = df.round(3)
+
+    # print(df)
+    df.to_csv('Classifer_{}.csv'.format(Version))
 
 
 
@@ -146,6 +143,7 @@ def main():
     NUM_WORKERS = os.cpu_count()
     embedding_size = 128
     seed = 70
+    Version = "GCNConv"
 
     device = torch.device("cuda" if USE_CUDA and torch.cuda.is_available() else "cpu")
     torch.manual_seed(1)
@@ -260,21 +258,21 @@ def main():
 
     clf.eval()
 
-    baseline(X_train, y_train, y_test, X_test, clf, _X_test)
+    baseline(X_train, y_train, y_test, X_test, clf, _X_test, Version)
 
     top_items_idx = np.argsort(-clf(torch.tensor(z_np[types == 'drug'], dtype=torch.float).to(device)).squeeze().detach().cpu().numpy())
 
 
 
 
-    topk_drugs = pd.DataFrame([(rank, drug.split('_')[1]) for rank, drug in enumerate(
+    drug_rank = pd.DataFrame([(rank, drug.split('_')[1]) for rank, drug in enumerate(
         le.inverse_transform((types == 'drug').nonzero()[0][top_items_idx])[:topk + 1])], columns=['rank', 'drug'])
-    topk_drugs['under_trials'] = topk_drugs['drug'].isin(trials_drug).astype(int)
-    topk_drugs['is_used_in_training'] = topk_drugs['drug'].isin(
+    drug_rank['under_trials'] = drug_rank['drug'].isin(trials_drug).astype(int)
+    drug_rank['is_used_in_training'] = drug_rank['drug'].isin(
         np.array([drug.split('_')[1] for drug in le.classes_[types == 'drug']])[indices_train]).astype(int)
-    topk_drugs = topk_drugs.set_index("rank")
-    print(topk_drugs)
-    topk_drugs.to_csv('top300_drugs.csv')
+    drug_rank = drug_rank.set_index("rank")
+    # print(drug_rank)
+    drug_rank.to_csv('drug_rank_{}.csv'.format(Version))
 
 if __name__ == "__main__":
     main()

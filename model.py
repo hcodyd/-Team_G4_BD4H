@@ -4,21 +4,32 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
 import numpy as np
 from torch.utils.data import BatchSampler, WeightedRandomSampler
-from torch_geometric.nn import GCNConv, SAGEConv,GAE, VGAE
+from torch_geometric.nn import GCNConv, SAGEConv,GAE, VGAE, ChebConv
 
 class Encoder_VGAE(nn.Module):
     def __init__(self, in_channels, out_channels, isClassificationTask=False):
         super(Encoder_VGAE, self).__init__()
         self.isClassificationTask = isClassificationTask
-        self.conv_gene_drug = SAGEConv(in_channels, 2 * out_channels, )
-        self.conv_gene_gene = SAGEConv(in_channels, 2 * out_channels, )
-        self.conv_bait_gene = SAGEConv(in_channels, 2 * out_channels, )
-        self.conv_gene_phenotype = SAGEConv(in_channels, 2 * out_channels, )
-        self.conv_drug_phenotype = SAGEConv(in_channels, 2 * out_channels)
+        # self.conv_gene_drug = SAGEConv(in_channels, 2 * out_channels, )
+        # self.conv_gene_gene = SAGEConv(in_channels, 2 * out_channels, )
+        # self.conv_bait_gene = SAGEConv(in_channels, 2 * out_channels, )
+        # self.conv_gene_phenotype = SAGEConv(in_channels, 2 * out_channels, )
+        # self.conv_drug_phenotype = SAGEConv(in_channels, 2 * out_channels)
+        # self.bn = nn.BatchNorm1d(5 * 2 * out_channels)
+        # # variational encoder
+        # self.conv_mu = SAGEConv(5 * 2 * out_channels, out_channels, )
+        # self.conv_logvar = SAGEConv(5 * 2 * out_channels, out_channels, )
+
+        self.conv_gene_drug = GCNConv(in_channels, 2 * out_channels, )
+        self.conv_gene_gene = GCNConv(in_channels, 2 * out_channels, )
+        self.conv_bait_gene = GCNConv(in_channels, 2 * out_channels, )
+        self.conv_gene_phenotype = GCNConv(in_channels, 2 * out_channels, )
+        self.conv_drug_phenotype = GCNConv(in_channels, 2 * out_channels)
         self.bn = nn.BatchNorm1d(5 * 2 * out_channels)
         # variational encoder
-        self.conv_mu = SAGEConv(5 * 2 * out_channels, out_channels, )
-        self.conv_logvar = SAGEConv(5 * 2 * out_channels, out_channels, )
+        self.conv_mu = GCNConv(5 * 2 * out_channels, out_channels, )
+        self.conv_logvar = GCNConv(5 * 2 * out_channels, out_channels, )
+
 
     def forward(self, x, edge_index, edge_attr):
         x = F.dropout(x, training=self.training)
